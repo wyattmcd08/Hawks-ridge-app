@@ -1,4 +1,3 @@
-import sharp from 'sharp'
 import { mkdirSync } from 'fs'
 
 mkdirSync('public/icons', { recursive: true })
@@ -30,14 +29,20 @@ function svg(size) {
   </svg>`
 }
 
-for (const size of [192, 512]) {
-  await sharp(Buffer.from(svg(512)))
-    .resize(size, size)
-    .png()
-    .toFile(`public/icons/icon-${size}.png`)
-  console.log(`icon-${size}.png`)
-}
+try {
+  const { default: sharp } = await import('sharp')
 
-await sharp(Buffer.from(svg(512))).resize(180, 180).png().toFile('public/apple-touch-icon.png')
-await sharp(Buffer.from(svg(512))).resize(48, 48).png().toFile('public/favicon.png')
-console.log('done')
+  for (const size of [192, 512]) {
+    await sharp(Buffer.from(svg(512)))
+      .resize(size, size)
+      .png()
+      .toFile(`public/icons/icon-${size}.png`)
+    console.log(`icon-${size}.png`)
+  }
+
+  await sharp(Buffer.from(svg(512))).resize(180, 180).png().toFile('public/apple-touch-icon.png')
+  await sharp(Buffer.from(svg(512))).resize(48, 48).png().toFile('public/favicon.png')
+  console.log('done')
+} catch (e) {
+  console.warn('Icon generation skipped:', e.message)
+}

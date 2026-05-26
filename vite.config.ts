@@ -19,9 +19,10 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/hawks-ridge-app/',
+        scope: '/hawks-ridge-app/',
         icons: [
-          { src: '/hawks-ridge-app/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: '/hawks-ridge-app/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
       },
       workbox: {

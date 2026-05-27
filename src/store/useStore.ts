@@ -51,25 +51,6 @@ function buildShift(
   }
 }
 
-// Seed a few recent shifts so the dashboard feels alive on first open.
-function seedShifts(rate: number): Shift[] {
-  const days = [1, 2, 4, 6, 8, 9, 11] // days ago
-  const outs = ['13:30', '14:15', '12:45', '15:00', '13:00', '14:30', '13:45']
-  return days.map((ago, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - ago)
-    const date = d.toISOString().slice(0, 10)
-    return buildShift({
-      date,
-      startTime: '05:45',
-      endTime: outs[i],
-      breakMinutes: i % 3 === 0 ? 30 : 0,
-      hourlyRate: rate,
-      notes: '',
-    })
-  })
-}
-
 const DEFAULT_SETTINGS: Settings = {
   hourlyRate: 15,
   savingsRate: 0.05,
@@ -77,42 +58,12 @@ const DEFAULT_SETTINGS: Settings = {
   name: '',
 }
 
-const SEED_GOALS: Goal[] = [
-  {
-    id: uid(),
-    name: 'First Truck',
-    emoji: '🛻',
-    targetAmount: 8000,
-    currentAmount: 1240,
-    color: '#e11d2a',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: uid(),
-    name: 'Detailing Kit',
-    emoji: '🧽',
-    targetAmount: 600,
-    currentAmount: 215,
-    color: '#f5b14c',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: uid(),
-    name: 'College Fund',
-    emoji: '🎓',
-    targetAmount: 15000,
-    currentAmount: 980,
-    color: '#4c9af5',
-    createdAt: new Date().toISOString(),
-  },
-]
-
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
       settings: DEFAULT_SETTINGS,
-      shifts: seedShifts(DEFAULT_SETTINGS.hourlyRate),
-      goals: SEED_GOALS,
+      shifts: [],
+      goals: [],
       session: { isActive: false, startTime: null, breakMinutes: 0 },
       page: 'dashboard',
       hasOnboarded: false,
@@ -218,7 +169,7 @@ export const useStore = create<State>()(
     }),
     {
       name: 'hawks-ridge-finance',
-      version: 1,
+      version: 2,
     },
   ),
 )

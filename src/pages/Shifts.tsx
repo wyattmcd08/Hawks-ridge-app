@@ -42,7 +42,7 @@ export default function Shifts() {
   const [editing, setEditing] = useState<Shift | null>(null)
 
   const weekGross = sumGross(shiftsInWeek(shifts, new Date()))
-  const breakdown = estimateTaxes(weekGross, settings.savingsRate)
+  const breakdown = estimateTaxes(weekGross, settings.savingsRate, settings.isDependent)
   const groups = useMemo(() => groupByWeek(shifts), [shifts])
 
   const openAdd = () => {

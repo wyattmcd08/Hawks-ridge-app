@@ -10,10 +10,10 @@ const ROWS: {
   color: string
 }[] = [
   { key: 'netPay', label: 'Take-home pay', color: '#34d399' },
-  { key: 'savingsDeduction', label: 'Auto savings (5%)', color: '#4c9af5' },
-  { key: 'ficaTax', label: 'FICA', color: '#f5b14c' },
-  { key: 'federalTax', label: 'Federal tax', color: '#e11d2a' },
-  { key: 'stateTax', label: 'Georgia tax', color: '#a78bfa' },
+  { key: 'savingsDeduction', label: 'Auto savings', color: '#4c9af5' },
+  { key: 'ficaTax', label: 'FICA (Social Security + Medicare)', color: '#f0c040' },
+  { key: 'federalTax', label: 'Federal income tax', color: '#a78bfa' },
+  { key: 'stateTax', label: 'Georgia income tax', color: '#ff8a5e' },
 ]
 
 export default function PayBreakdown({

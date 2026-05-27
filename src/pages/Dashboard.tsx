@@ -47,7 +47,7 @@ export default function Dashboard() {
   const weekShifts = shiftsInWeek(shifts, now)
   const weekGross = sumGross(weekShifts)
   const weekHours = sumHours(weekShifts)
-  const paycheck = estimateTaxes(weekGross, settings.savingsRate)
+  const paycheck = estimateTaxes(weekGross, settings.savingsRate, settings.isDependent)
   const avgRate = weekHours > 0 ? weekGross / weekHours : settings.hourlyRate
 
   const todayKey = now.toISOString().slice(0, 10)
@@ -169,31 +169,31 @@ export default function Dashboard() {
             <AreaChart data={trend} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
               <defs>
                 <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#e11d2a" stopOpacity={0.5} />
-                  <stop offset="100%" stopColor="#e11d2a" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#006747" stopOpacity={0.5} />
+                  <stop offset="100%" stopColor="#006747" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <XAxis
                 dataKey="label"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#56565e', fontSize: 11 }}
+                tick={{ fill: '#565e59', fontSize: 11 }}
               />
               <Tooltip
-                cursor={{ stroke: '#e11d2a', strokeWidth: 1, strokeDasharray: '4 4' }}
+                cursor={{ stroke: '#006747', strokeWidth: 1, strokeDasharray: '4 4' }}
                 contentStyle={{
-                  background: 'rgba(20,20,24,0.95)',
+                  background: 'rgba(20,24,22,0.95)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: 14,
                   color: '#fff',
                 }}
                 formatter={(v) => [currency(Number(v)), 'Earned']}
-                labelStyle={{ color: '#8b8b94' }}
+                labelStyle={{ color: '#8b9490' }}
               />
               <Area
                 type="monotone"
                 dataKey="value"
-                stroke="#ff2d3d"
+                stroke="#1a8a60"
                 strokeWidth={2.5}
                 fill="url(#trendFill)"
               />
@@ -272,7 +272,7 @@ export default function Dashboard() {
           </motion.button>
         ))}
         {recent.length === 0 && (
-          <GlassCard className="p-8 text-center" >
+          <GlassCard className="p-8 text-center">
             <p className="text-mute">No shifts yet. Add your first one!</p>
           </GlassCard>
         )}

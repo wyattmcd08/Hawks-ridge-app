@@ -56,6 +56,7 @@ const DEFAULT_SETTINGS: Settings = {
   savingsRate: 0.05,
   defaultStartTime: '05:45',
   name: '',
+  isDependent: true,
 }
 
 export const useStore = create<State>()(
@@ -169,7 +170,7 @@ export const useStore = create<State>()(
     }),
     {
       name: 'hawks-ridge-finance',
-      version: 2,
+      version: 3,
     },
   ),
 )

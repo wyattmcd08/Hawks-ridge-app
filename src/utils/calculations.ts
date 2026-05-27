@@ -42,11 +42,12 @@ function federalEffectiveRate(annualGross: number): number {
   return tax / annualGross
 }
 
-// Estimate the full breakdown for a single paycheck's gross amount.
-// annualGross lets us pick a realistic federal effective rate (teens pay ~0%).
+// Estimate the full breakdown for a single paycheck.
+// isDependent: when true, skips income tax (only FICA applies — common for teen/dependent workers).
 export function estimateTaxes(
   grossPay: number,
   savingsRate: number,
+  isDependent = false,
   annualGross = grossPay * PAY_PERIODS_PER_YEAR,
 ): TaxBreakdown {
   if (grossPay <= 0) {
@@ -59,22 +60,33 @@ export function estimateTaxes(
       netPay: 0,
     }
   }
+
+  const ficaTax = grossPay * FICA_RATE
+  const savingsDeduction = grossPay * savingsRate
+
+  if (isDependent) {
+    return {
+      grossPay,
+      federalTax: 0,
+      stateTax: 0,
+      ficaTax,
+      savingsDeduction,
+      netPay: Math.max(0, grossPay - ficaTax - savingsDeduction),
+    }
+  }
+
   const fedRate = federalEffectiveRate(annualGross)
   const federalTax = grossPay * fedRate
-  const ficaTax = grossPay * FICA_RATE
-  // GA allows a deduction too; approximate effective state rate via annualized base.
   const stateTaxable = Math.max(0, annualGross - FEDERAL_STD_DEDUCTION)
   const stateRate = annualGross > 0 ? (stateTaxable / annualGross) * GA_STATE_RATE : 0
   const stateTax = grossPay * stateRate
-  const savingsDeduction = grossPay * savingsRate
-  const netPay = grossPay - federalTax - stateTax - ficaTax - savingsDeduction
   return {
     grossPay,
     federalTax,
     stateTax,
     ficaTax,
     savingsDeduction,
-    netPay: Math.max(0, netPay),
+    netPay: Math.max(0, grossPay - federalTax - stateTax - ficaTax - savingsDeduction),
   }
 }
 

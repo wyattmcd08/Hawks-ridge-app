@@ -1,25 +1,25 @@
 @import 'tailwindcss';
 
 @theme {
-  /* Surfaces */
-  --color-void: #060607;
-  --color-base: #0a0a0b;
-  --color-charcoal: #131316;
-  --color-elevated: #1a1a1f;
+  /* Surfaces — dark with Augusta night green tint */
+  --color-void: #060908;
+  --color-base: #090d0a;
+  --color-charcoal: #111614;
+  --color-elevated: #181f1b;
 
-  /* Hawks Ridge deep red */
-  --color-blood: #e11d2a;
-  --color-blood-bright: #ff2d3d;
-  --color-blood-deep: #8b0c16;
-  --color-ember: #ff4b3e;
+  /* Masters Tournament green */
+  --color-blood: #006747;
+  --color-blood-bright: #1a8a60;
+  --color-blood-deep: #004a32;
+  --color-ember: #c9a84c;
 
   /* Text */
   --color-ink: #f7f7f8;
-  --color-mute: #8b8b94;
-  --color-faint: #56565e;
+  --color-mute: #8b9490;
+  --color-faint: #565e59;
 
-  /* Accents for goals/charts */
-  --color-gold: #f5b14c;
+  /* Accents */
+  --color-gold: #f0c040;
   --color-mint: #34d399;
   --color-sky: #4c9af5;
   --color-violet: #a78bfa;
@@ -28,7 +28,7 @@
 
   --radius-card: 28px;
 
-  --shadow-glow: 0 0 40px -8px rgba(225, 29, 42, 0.45);
+  --shadow-glow: 0 0 40px -8px rgba(0, 103, 71, 0.55);
   --shadow-soft: 0 20px 50px -20px rgba(0, 0, 0, 0.8);
 }
 
@@ -52,8 +52,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior-y: none;
   background:
-    radial-gradient(120% 80% at 50% -10%, rgba(225, 29, 42, 0.12) 0%, transparent 55%),
-    radial-gradient(80% 60% at 100% 100%, rgba(139, 12, 22, 0.1) 0%, transparent 60%),
+    radial-gradient(120% 80% at 50% -10%, rgba(0, 103, 71, 0.15) 0%, transparent 55%),
+    radial-gradient(80% 60% at 100% 100%, rgba(0, 74, 50, 0.1) 0%, transparent 60%),
     var(--color-base);
   background-attachment: fixed;
 }
@@ -90,19 +90,20 @@ body {
 .glass-red {
   background: linear-gradient(
     160deg,
-    rgba(225, 29, 42, 0.22) 0%,
-    rgba(139, 12, 22, 0.08) 100%
+    rgba(0, 103, 71, 0.22) 0%,
+    rgba(0, 74, 50, 0.08) 100%
   );
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
-  border: 1px solid rgba(255, 45, 61, 0.25);
+  border: 1px solid rgba(26, 138, 96, 0.3);
   box-shadow:
     var(--shadow-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
+/* Gold gradient for live earnings display */
 .text-gradient-red {
-  background: linear-gradient(135deg, #ff5a4d 0%, #e11d2a 50%, #8b0c16 100%);
+  background: linear-gradient(135deg, #f5e07a 0%, #f0c040 50%, #c9a84c 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;

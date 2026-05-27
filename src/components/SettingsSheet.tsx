@@ -17,6 +17,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const [rate, setRate] = useState(settings.hourlyRate)
   const [savings, setSavings] = useState(settings.savingsRate * 100)
   const [start, setStart] = useState(settings.defaultStartTime)
+  const [isDependent, setIsDependent] = useState(settings.isDependent)
 
   useEffect(() => {
     if (open) {
@@ -24,6 +25,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
       setRate(settings.hourlyRate)
       setSavings(settings.savingsRate * 100)
       setStart(settings.defaultStartTime)
+      setIsDependent(settings.isDependent)
     }
   }, [open, settings])
 
@@ -33,6 +35,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
       hourlyRate: rate,
       savingsRate: savings / 100,
       defaultStartTime: start,
+      isDependent,
     })
     onClose()
   }
@@ -79,10 +82,29 @@ export default function SettingsSheet({ open, onClose }: Props) {
           onChange={(e) => setStart(e.target.value)}
         />
 
+        {/* Dependent toggle */}
+        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5">
+          <div>
+            <p className="text-sm font-medium text-ink">Filed as dependent</p>
+            <p className="mt-0.5 text-xs text-mute">Only FICA withheld — no income tax</p>
+          </div>
+          <button
+            onClick={() => setIsDependent(!isDependent)}
+            className={`relative ml-4 h-7 w-12 flex-shrink-0 rounded-full transition-colors ${
+              isDependent ? 'bg-blood' : 'bg-white/20'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                isDependent ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
         <PrimaryButton onClick={save}>Save Settings</PrimaryButton>
         <p className="px-2 text-center text-xs text-faint">
-          Tax figures are withholding estimates for a single filer in Georgia,
-          not financial advice.
+          Tax figures are estimates only — not financial advice.
         </p>
       </div>
     </Sheet>

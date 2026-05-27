@@ -26,6 +26,7 @@ export interface Settings {
   savingsRate: number
   defaultStartTime: string
   name: string
+  isDependent: boolean
 }
 
 export interface ActiveSession {

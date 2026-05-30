@@ -1,12 +1,10 @@
 import type { Shift, TaxBreakdown } from '../types'
 
-// 2024-ish estimates. These are withholding ESTIMATES, not tax advice.
-export const FICA_RATE = 0.0765 // Social Security 6.2% + Medicare 1.45%
-export const GA_STATE_RATE = 0.0539 // Georgia flat income tax
-export const FEDERAL_STD_DEDUCTION = 14600 // single filer
-export const PAY_PERIODS_PER_YEAR = 52 // weekly pay period assumption
+export const FICA_RATE = 0.0765
+export const GA_STATE_RATE = 0.0539
+export const FEDERAL_STD_DEDUCTION = 14600
+export const PAY_PERIODS_PER_YEAR = 52
 
-// Compute decimal hours worked from start/end (HH:MM) minus unpaid break.
 export function computeHours(
   startTime: string,
   endTime: string,
@@ -16,12 +14,11 @@ export function computeHours(
   const [sh, sm] = startTime.split(':').map(Number)
   const [eh, em] = endTime.split(':').map(Number)
   let mins = eh * 60 + em - (sh * 60 + sm)
-  if (mins < 0) mins += 24 * 60 // overnight shift
+  if (mins < 0) mins += 24 * 60
   mins -= breakMinutes
   return Math.max(0, mins / 60)
 }
 
-// Progressive 2024 single-filer federal brackets (effective rate on annual gross).
 function federalEffectiveRate(annualGross: number): number {
   const taxable = Math.max(0, annualGross - FEDERAL_STD_DEDUCTION)
   if (taxable <= 0) return 0
@@ -42,8 +39,6 @@ function federalEffectiveRate(annualGross: number): number {
   return tax / annualGross
 }
 
-// Estimate the full breakdown for a single paycheck.
-// isDependent: when true, skips income tax (only FICA applies — common for teen/dependent workers).
 export function estimateTaxes(
   grossPay: number,
   savingsRate: number,
@@ -51,22 +46,15 @@ export function estimateTaxes(
   annualGross = grossPay * PAY_PERIODS_PER_YEAR,
 ): TaxBreakdown {
   if (grossPay <= 0) {
-    return {
-      grossPay: 0,
-      federalTax: 0,
-      stateTax: 0,
-      ficaTax: 0,
-      savingsDeduction: 0,
-      netPay: 0,
-    }
+    return { grossPay: 0, otPay: 0, otHours: 0, federalTax: 0, stateTax: 0, ficaTax: 0, savingsDeduction: 0, netPay: 0 }
   }
-
   const ficaTax = grossPay * FICA_RATE
   const savingsDeduction = grossPay * savingsRate
-
   if (isDependent) {
     return {
       grossPay,
+      otPay: 0,
+      otHours: 0,
       federalTax: 0,
       stateTax: 0,
       ficaTax,
@@ -74,7 +62,6 @@ export function estimateTaxes(
       netPay: Math.max(0, grossPay - ficaTax - savingsDeduction),
     }
   }
-
   const fedRate = federalEffectiveRate(annualGross)
   const federalTax = grossPay * fedRate
   const stateTaxable = Math.max(0, annualGross - FEDERAL_STD_DEDUCTION)
@@ -82,6 +69,8 @@ export function estimateTaxes(
   const stateTax = grossPay * stateRate
   return {
     grossPay,
+    otPay: 0,
+    otHours: 0,
     federalTax,
     stateTax,
     ficaTax,
@@ -90,9 +79,24 @@ export function estimateTaxes(
   }
 }
 
+// Weekly gross accounting for 1.5x overtime on hours above 40.
+export function computeWeeklyBreakdown(
+  weekShifts: Shift[],
+  hourlyRate: number,
+  savingsRate: number,
+  isDependent = false,
+): TaxBreakdown {
+  const totalHours = sumHours(weekShifts)
+  const regularHours = Math.min(40, totalHours)
+  const otHours = Math.max(0, totalHours - 40)
+  const grossPay = regularHours * hourlyRate + otHours * hourlyRate * 1.5
+  const base = estimateTaxes(grossPay, savingsRate, isDependent)
+  return { ...base, grossPay, otPay: otHours * hourlyRate * 1.5, otHours }
+}
+
 export function startOfWeek(d: Date): Date {
   const date = new Date(d)
-  const day = date.getDay() // 0 = Sunday
+  const day = date.getDay()
   date.setHours(0, 0, 0, 0)
   date.setDate(date.getDate() - day)
   return date

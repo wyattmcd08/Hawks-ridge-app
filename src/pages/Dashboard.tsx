@@ -27,7 +27,7 @@ import {
   shiftsInWeek,
   sumGross,
   sumHours,
-  estimateTaxes,
+  computeWeeklyBreakdown,
 } from '../utils/calculations'
 import { dailySeries } from '../utils/series'
 import { currency, hoursLabel, relativeDay, to12Hour } from '../utils/format'
@@ -45,10 +45,14 @@ export default function Dashboard() {
 
   const now = new Date()
   const weekShifts = shiftsInWeek(shifts, now)
-  const weekGross = sumGross(weekShifts)
   const weekHours = sumHours(weekShifts)
-  const paycheck = estimateTaxes(weekGross, settings.savingsRate, settings.isDependent)
-  const avgRate = weekHours > 0 ? weekGross / weekHours : settings.hourlyRate
+  const paycheck = computeWeeklyBreakdown(
+    weekShifts,
+    settings.hourlyRate,
+    settings.savingsRate,
+    settings.isDependent,
+  )
+  const avgRate = weekHours > 0 ? paycheck.grossPay / weekHours : settings.hourlyRate
 
   const todayKey = now.toISOString().slice(0, 10)
   const todayGross = sumGross(shifts.filter((s) => s.date === todayKey))
@@ -93,7 +97,8 @@ export default function Dashboard() {
               <AnimatedNumber value={paycheck.netPay} prefix="$" />
             </p>
             <p className="mt-1.5 text-sm text-white/60">
-              {currency(weekGross)} gross · this week
+              {currency(paycheck.grossPay)} gross
+              {paycheck.otHours > 0 && ` · ${paycheck.otHours.toFixed(1)}h OT`}
             </p>
           </div>
           <div className="rounded-full bg-white/10 p-2.5">
@@ -112,55 +117,24 @@ export default function Dashboard() {
             {live.active ? 'Earning now · today' : 'Earned today'}
           </span>
           <span className="ml-auto text-lg font-bold tabular-nums">
-            <AnimatedNumber
-              value={earnedToday}
-              prefix="$"
-              duration={live.active ? 0.4 : 1}
-            />
+            <AnimatedNumber value={earnedToday} prefix="$" duration={live.active ? 0.4 : 1} />
           </span>
         </div>
       </GlassCard>
 
       {/* Stat grid */}
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <StatTile
-          icon={Clock}
-          label="Hours this week"
-          value={hoursLabel(weekHours)}
-          tint="text-sky"
-          delay={0.1}
-        />
-        <StatTile
-          icon={Wallet}
-          label="Earned this week"
-          value={currency(weekGross, 0)}
-          tint="text-gold"
-          delay={0.15}
-        />
-        <StatTile
-          icon={PiggyBank}
-          label="Total saved"
-          value={currency(totalSaved, 0)}
-          tint="text-mint"
-          delay={0.2}
-        />
-        <StatTile
-          icon={TrendingUp}
-          label="Avg / hour"
-          value={currency(avgRate, 2)}
-          tint="text-violet"
-          delay={0.25}
-        />
+        <StatTile icon={Clock} label="Hours this week" value={hoursLabel(weekHours)} tint="text-sky" delay={0.1} />
+        <StatTile icon={Wallet} label="Earned this week" value={currency(paycheck.grossPay, 0)} tint="text-gold" delay={0.15} />
+        <StatTile icon={PiggyBank} label="Total saved" value={currency(totalSaved, 0)} tint="text-mint" delay={0.2} />
+        <StatTile icon={TrendingUp} label="Avg / hour" value={currency(avgRate, 2)} tint="text-violet" delay={0.25} />
       </div>
 
       {/* Earnings trend */}
       <GlassCard className="mt-4 p-5" delay={0.3}>
         <div className="mb-1 flex items-center justify-between">
           <p className="font-semibold">Earnings trend</p>
-          <button
-            onClick={() => setPage('analytics')}
-            className="flex items-center text-xs text-mute"
-          >
+          <button onClick={() => setPage('analytics')} className="flex items-center text-xs text-mute">
             Last 7 days <ChevronRight size={14} />
           </button>
         </div>
@@ -173,30 +147,14 @@ export default function Dashboard() {
                   <stop offset="100%" stopColor="#006747" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis
-                dataKey="label"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: '#565e59', fontSize: 11 }}
-              />
+              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#565e59', fontSize: 11 }} />
               <Tooltip
                 cursor={{ stroke: '#006747', strokeWidth: 1, strokeDasharray: '4 4' }}
-                contentStyle={{
-                  background: 'rgba(20,24,22,0.95)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: 14,
-                  color: '#fff',
-                }}
+                contentStyle={{ background: 'rgba(20,24,22,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, color: '#fff' }}
                 formatter={(v) => [currency(Number(v)), 'Earned']}
                 labelStyle={{ color: '#8b9490' }}
               />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke="#1a8a60"
-                strokeWidth={2.5}
-                fill="url(#trendFill)"
-              />
+              <Area type="monotone" dataKey="value" stroke="#1a8a60" strokeWidth={2.5} fill="url(#trendFill)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -207,10 +165,7 @@ export default function Dashboard() {
         <GlassCard className="mt-4 p-5" delay={0.35}>
           <div className="mb-4 flex items-center justify-between">
             <p className="font-semibold">Savings goals</p>
-            <button
-              onClick={() => setPage('goals')}
-              className="flex items-center text-xs text-mute"
-            >
+            <button onClick={() => setPage('goals')} className="flex items-center text-xs text-mute">
               View all <ChevronRight size={14} />
             </button>
           </div>
@@ -219,13 +174,7 @@ export default function Dashboard() {
               const pct = g.targetAmount > 0 ? g.currentAmount / g.targetAmount : 0
               return (
                 <div key={g.id} className="flex flex-col items-center gap-2">
-                  <CircularProgress
-                    progress={pct}
-                    size={88}
-                    stroke={9}
-                    color={g.color}
-                    delay={0.4 + i * 0.1}
-                  >
+                  <CircularProgress progress={pct} size={88} stroke={9} color={g.color} delay={0.4 + i * 0.1}>
                     <span className="text-xl">{g.emoji}</span>
                   </CircularProgress>
                   <div className="text-center">

@@ -31,7 +31,7 @@ export interface Settings {
 
 export interface ActiveSession {
   isActive: boolean
-  startTime: string | null // ISO string
+  startTime: string | null
   breakMinutes: number
 }
 
@@ -39,6 +39,8 @@ export type Page = 'dashboard' | 'shifts' | 'analytics' | 'goals' | 'live'
 
 export interface TaxBreakdown {
   grossPay: number
+  otPay: number
+  otHours: number
   federalTax: number
   stateTax: number
   ficaTax: number

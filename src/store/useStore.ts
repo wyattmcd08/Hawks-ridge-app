@@ -35,20 +35,9 @@ function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 }
 
-function buildShift(
-  input: Omit<Shift, 'id' | 'hoursWorked' | 'grossPay'>,
-): Shift {
-  const hoursWorked = computeHours(
-    input.startTime,
-    input.endTime,
-    input.breakMinutes,
-  )
-  return {
-    ...input,
-    id: uid(),
-    hoursWorked,
-    grossPay: hoursWorked * input.hourlyRate,
-  }
+function buildShift(input: Omit<Shift, 'id' | 'hoursWorked' | 'grossPay'>): Shift {
+  const hoursWorked = computeHours(input.startTime, input.endTime, input.breakMinutes)
+  return { ...input, id: uid(), hoursWorked, grossPay: hoursWorked * input.hourlyRate }
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -59,11 +48,25 @@ const DEFAULT_SETTINGS: Settings = {
   isDependent: true,
 }
 
+function seedShifts(): Shift[] {
+  const r = DEFAULT_SETTINGS.hourlyRate
+  return [
+    { date: '2026-05-23', startTime: '05:45', endTime: '08:30', breakMinutes: 0, notes: '' },
+    { date: '2026-05-24', startTime: '05:45', endTime: '10:30', breakMinutes: 0, notes: '' },
+    { date: '2026-05-25', startTime: '05:45', endTime: '11:30', breakMinutes: 0, notes: '' },
+    { date: '2026-05-26', startTime: '05:45', endTime: '14:30', breakMinutes: 30, notes: '' },
+    { date: '2026-05-27', startTime: '05:45', endTime: '14:00', breakMinutes: 30, notes: '' },
+    { date: '2026-05-28', startTime: '06:10', endTime: '14:26', breakMinutes: 30, notes: 'Logged from live session' },
+    { date: '2026-05-29', startTime: '05:59', endTime: '14:03', breakMinutes: 30, notes: 'Logged from live session' },
+    { date: '2026-05-30', startTime: '05:50', endTime: '09:55', breakMinutes: 0, notes: 'Logged from live session' },
+  ].map((e) => buildShift({ ...e, hourlyRate: r }))
+}
+
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
       settings: DEFAULT_SETTINGS,
-      shifts: [],
+      shifts: seedShifts(),
       goals: [],
       session: { isActive: false, startTime: null, breakMinutes: 0 },
       page: 'dashboard',
@@ -80,16 +83,8 @@ export const useStore = create<State>()(
           shifts: st.shifts.map((sh) => {
             if (sh.id !== id) return sh
             const merged = { ...sh, ...patch }
-            const hoursWorked = computeHours(
-              merged.startTime,
-              merged.endTime,
-              merged.breakMinutes,
-            )
-            return {
-              ...merged,
-              hoursWorked,
-              grossPay: hoursWorked * merged.hourlyRate,
-            }
+            const hoursWorked = computeHours(merged.startTime, merged.endTime, merged.breakMinutes)
+            return { ...merged, hoursWorked, grossPay: hoursWorked * merged.hourlyRate }
           }),
         })),
       deleteShift: (id) =>
@@ -97,10 +92,7 @@ export const useStore = create<State>()(
 
       addGoal: (g) =>
         set((st) => ({
-          goals: [
-            ...st.goals,
-            { ...g, id: uid(), createdAt: new Date().toISOString() },
-          ],
+          goals: [...st.goals, { ...g, id: uid(), createdAt: new Date().toISOString() }],
         })),
       updateGoal: (id, patch) =>
         set((st) => ({
@@ -111,22 +103,13 @@ export const useStore = create<State>()(
       contributeToGoal: (id, amount) =>
         set((st) => ({
           goals: st.goals.map((g) =>
-            g.id === id
-              ? {
-                  ...g,
-                  currentAmount: Math.max(0, g.currentAmount + amount),
-                }
-              : g,
+            g.id === id ? { ...g, currentAmount: Math.max(0, g.currentAmount + amount) } : g,
           ),
         })),
 
       startSession: () =>
         set({
-          session: {
-            isActive: true,
-            startTime: new Date().toISOString(),
-            breakMinutes: 0,
-          },
+          session: { isActive: true, startTime: new Date().toISOString(), breakMinutes: 0 },
           page: 'live',
         }),
       stopSession: () => {
@@ -136,9 +119,7 @@ export const useStore = create<State>()(
           const now = new Date()
           const date = start.toISOString().slice(0, 10)
           const fmt = (d: Date) =>
-            `${String(d.getHours()).padStart(2, '0')}:${String(
-              d.getMinutes(),
-            ).padStart(2, '0')}`
+            `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
           get().addShift({
             date,
             startTime: fmt(start),
@@ -148,10 +129,7 @@ export const useStore = create<State>()(
             notes: 'Logged from live session',
           })
         }
-        set({
-          session: { isActive: false, startTime: null, breakMinutes: 0 },
-          page: 'dashboard',
-        })
+        set({ session: { isActive: false, startTime: null, breakMinutes: 0 }, page: 'dashboard' })
       },
       setSessionBreak: (mins) =>
         set((st) => ({ session: { ...st.session, breakMinutes: mins } })),
@@ -159,8 +137,7 @@ export const useStore = create<State>()(
       totalSaved: () => {
         const { shifts, settings, goals } = get()
         const fromShifts = shifts.reduce(
-          (acc, s) =>
-            acc + estimateTaxes(s.grossPay, settings.savingsRate).savingsDeduction,
+          (acc, s) => acc + estimateTaxes(s.grossPay, settings.savingsRate).savingsDeduction,
           0,
         )
         const inGoals = goals.reduce((acc, g) => acc + g.currentAmount, 0)
@@ -170,7 +147,21 @@ export const useStore = create<State>()(
     }),
     {
       name: 'hawks-ridge-finance',
-      version: 3,
+      version: 4,
+      // Preserve user data across future version bumps; only fall back to seed shifts if none exist.
+      migrate: (persisted, version) => {
+        const s = persisted as Partial<State>
+        return {
+          settings: { ...DEFAULT_SETTINGS, ...(s.settings ?? {}) },
+          shifts: (version < 4 && (!s.shifts || s.shifts.length === 0))
+            ? seedShifts()
+            : (s.shifts ?? seedShifts()),
+          goals: s.goals ?? [],
+          session: s.session ?? { isActive: false, startTime: null, breakMinutes: 0 },
+          page: (s.page ?? 'dashboard') as Page,
+          hasOnboarded: s.hasOnboarded ?? false,
+        } as unknown as State
+      },
     },
   ),
 )

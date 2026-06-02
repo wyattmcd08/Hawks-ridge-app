@@ -27,6 +27,7 @@ export interface Settings {
   defaultStartTime: string
   name: string
   isDependent: boolean
+  nextPayday: string // YYYY-MM-DD
 }
 
 export interface ActiveSession {
@@ -35,7 +36,7 @@ export interface ActiveSession {
   breakMinutes: number
 }
 
-export type Page = 'dashboard' | 'shifts' | 'analytics' | 'goals' | 'live'
+export type Page = 'dashboard' | 'shifts' | 'analytics' | 'goals' | 'live' | 'pay'
 
 export interface TaxBreakdown {
   grossPay: number
@@ -46,4 +47,9 @@ export interface TaxBreakdown {
   ficaTax: number
   savingsDeduction: number
   netPay: number
+}
+
+export interface BiweeklyBreakdown extends TaxBreakdown {
+  week1: TaxBreakdown
+  week2: TaxBreakdown
 }

@@ -21,6 +21,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const [savings, setSavings] = useState(settings.savingsRate * 100)
   const [start, setStart] = useState(settings.defaultStartTime)
   const [isDependent, setIsDependent] = useState(settings.isDependent)
+  const [nextPayday, setNextPayday] = useState(settings.nextPayday)
 
   useEffect(() => {
     if (open) {
@@ -29,10 +30,11 @@ export default function SettingsSheet({ open, onClose }: Props) {
       setSavings(settings.savingsRate * 100)
       setStart(settings.defaultStartTime)
       setIsDependent(settings.isDependent)
+      setNextPayday(settings.nextPayday)
     }
   }, [open, settings])
 
-  // Overtime math — uses local `rate` so it updates live as user edits
+  // Overtime math — uses local `rate` so it updates live as the user edits
   const weekShifts = shiftsInWeek(shifts, new Date())
   const totalHours = sumHours(weekShifts)
   const regularHours = Math.min(40, totalHours)
@@ -43,19 +45,12 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const grossWithOT = regularPay + otPay
   const grossFlat = totalHours * rate
   const otBonus = grossWithOT - grossFlat
-  // Bar uses 50h as ceiling so OT portion is visible
   const BAR_MAX = Math.max(50, totalHours)
   const greenPct = (regularHours / BAR_MAX) * 100
   const goldPct = (otHours / BAR_MAX) * 100
 
   const save = () => {
-    updateSettings({
-      name,
-      hourlyRate: rate,
-      savingsRate: savings / 100,
-      defaultStartTime: start,
-      isDependent,
-    })
+    updateSettings({ name, hourlyRate: rate, savingsRate: savings / 100, defaultStartTime: start, isDependent, nextPayday })
     onClose()
   }
 
@@ -72,34 +67,13 @@ export default function SettingsSheet({ open, onClose }: Props) {
           </div>
         </div>
 
-        <Field
-          label="Your name"
-          value={name}
-          placeholder="Optional"
-          onChange={(e) => setName(e.target.value)}
-        />
-        <Field
-          label="Hourly rate"
-          type="number"
-          inputMode="decimal"
-          prefix="$"
-          value={rate}
-          onChange={(e) => setRate(Number(e.target.value) || 0)}
-        />
-        <Field
-          label="Auto-savings rate"
-          type="number"
-          inputMode="decimal"
-          suffix="%"
-          value={savings}
-          onChange={(e) => setSavings(Number(e.target.value) || 0)}
-        />
-        <Field
-          label="Default start time"
-          type="time"
-          value={start}
-          onChange={(e) => setStart(e.target.value)}
-        />
+        <Field label="Your name" value={name} placeholder="Optional" onChange={(e) => setName(e.target.value)} />
+        <Field label="Hourly rate" type="number" inputMode="decimal" prefix="$" value={rate}
+          onChange={(e) => setRate(Number(e.target.value) || 0)} />
+        <Field label="Auto-savings rate" type="number" inputMode="decimal" suffix="%" value={savings}
+          onChange={(e) => setSavings(Number(e.target.value) || 0)} />
+        <Field label="Default start time" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+        <Field label="Next payday" type="date" value={nextPayday} onChange={(e) => setNextPayday(e.target.value)} />
 
         {/* Dependent toggle */}
         <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5">
@@ -138,11 +112,9 @@ export default function SettingsSheet({ open, onClose }: Props) {
             .
           </p>
 
-          {/* Progress bar + this-week numbers */}
           <div className="rounded-xl bg-black/25 px-3 py-3 space-y-3">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-mute">This week</p>
 
-            {/* 40-hour progress bar */}
             <div className="space-y-1">
               <div className="flex justify-between text-xs">
                 <span className="text-mute">{hoursLabel(totalHours)} worked</span>
@@ -151,22 +123,16 @@ export default function SettingsSheet({ open, onClose }: Props) {
                     ⚡ {hoursLabel(otHours)} overtime
                   </span>
                 ) : (
-                  <span className="text-faint">
-                    {hoursLabel(hoursToOT)} until OT kicks in
-                  </span>
+                  <span className="text-faint">{hoursLabel(hoursToOT)} until OT</span>
                 )}
               </div>
               <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/10">
                 <div className="flex h-full">
-                  <div
-                    className="h-full transition-all duration-500"
-                    style={{ width: `${greenPct}%`, background: '#006747' }}
-                  />
+                  <div className="h-full transition-all duration-500"
+                    style={{ width: `${greenPct}%`, background: '#006747' }} />
                   {otHours > 0 && (
-                    <div
-                      className="h-full transition-all duration-500"
-                      style={{ width: `${goldPct}%`, background: '#f0c040' }}
-                    />
+                    <div className="h-full transition-all duration-500"
+                      style={{ width: `${goldPct}%`, background: '#f0c040' }} />
                   )}
                 </div>
               </div>
@@ -177,10 +143,8 @@ export default function SettingsSheet({ open, onClose }: Props) {
               </div>
             </div>
 
-            {/* Pay math */}
             {totalHours > 0 ? (
               <div className="space-y-1.5 pt-1">
-                {/* Regular row */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full" style={{ background: '#006747' }} />
@@ -191,50 +155,32 @@ export default function SettingsSheet({ open, onClose }: Props) {
                   <span className="text-xs font-semibold tabular-nums">{currency(regularPay)}</span>
                 </div>
 
-                {/* OT row — always shown, grayed out when zero */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ background: otHours > 0 ? '#f0c040' : 'rgba(255,255,255,0.15)' }}
-                    />
-                    <span
-                      className="text-xs"
-                      style={{ color: otHours > 0 ? '#f0c040' : '#565e59' }}
-                    >
+                    <span className="h-2 w-2 rounded-full"
+                      style={{ background: otHours > 0 ? '#f0c040' : 'rgba(255,255,255,0.15)' }} />
+                    <span className="text-xs"
+                      style={{ color: otHours > 0 ? '#f0c040' : '#565e59' }}>
                       Overtime — {hoursLabel(otHours)} × {currency(rate * 1.5)}/hr
                     </span>
                   </div>
-                  <span
-                    className="text-xs font-bold tabular-nums"
-                    style={{ color: otHours > 0 ? '#f0c040' : '#565e59' }}
-                  >
+                  <span className="text-xs font-bold tabular-nums"
+                    style={{ color: otHours > 0 ? '#f0c040' : '#565e59' }}>
                     {otHours > 0 ? `+${currency(otPay)}` : '$0.00'}
                   </span>
                 </div>
 
-                {/* Divider + gross total */}
                 <div className="flex items-center justify-between border-t border-white/10 pt-2">
                   <span className="text-xs font-semibold text-ink">Gross this week</span>
                   <span className="text-xs font-bold tabular-nums">{currency(grossWithOT)}</span>
                 </div>
 
-                {/* OT bonus badge — only when OT is active */}
                 {otBonus > 0 && (
-                  <div
-                    className="flex items-center justify-between rounded-lg px-3 py-2"
-                    style={{
-                      background: 'rgba(240,192,64,0.1)',
-                      border: '1px solid rgba(240,192,64,0.25)',
-                    }}
-                  >
+                  <div className="flex items-center justify-between rounded-lg px-3 py-2"
+                    style={{ background: 'rgba(240,192,64,0.1)', border: '1px solid rgba(240,192,64,0.25)' }}>
                     <div>
-                      <p className="text-xs font-semibold" style={{ color: '#f0c040' }}>
-                        OT bonus earned
-                      </p>
-                      <p className="text-[10px] text-faint">
-                        vs. {currency(grossFlat)} at flat rate
-                      </p>
+                      <p className="text-xs font-semibold" style={{ color: '#f0c040' }}>OT bonus earned</p>
+                      <p className="text-[10px] text-faint">vs. {currency(grossFlat)} at flat rate</p>
                     </div>
                     <span className="text-sm font-extrabold tabular-nums" style={{ color: '#f0c040' }}>
                       +{currency(otBonus)}
@@ -243,9 +189,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
                 )}
               </div>
             ) : (
-              <p className="text-xs text-faint text-center py-0.5">
-                No shifts logged this week yet
-              </p>
+              <p className="text-xs text-faint text-center py-0.5">No shifts logged this week yet</p>
             )}
           </div>
         </div>

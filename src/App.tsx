@@ -6,6 +6,7 @@ import Shifts from './pages/Shifts'
 import Analytics from './pages/Analytics'
 import Goals from './pages/Goals'
 import LiveSession from './pages/LiveSession'
+import PayPeriods from './pages/PayPeriods'
 
 const pages = {
   dashboard: Dashboard,
@@ -13,6 +14,7 @@ const pages = {
   analytics: Analytics,
   goals: Goals,
   live: LiveSession,
+  pay: PayPeriods,
 }
 
 export default function App() {

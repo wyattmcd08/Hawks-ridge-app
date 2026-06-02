@@ -1,9 +1,10 @@
-import type { Shift, TaxBreakdown } from '../types'
+import type { Shift, TaxBreakdown, BiweeklyBreakdown } from '../types'
 
 export const FICA_RATE = 0.0765
 export const GA_STATE_RATE = 0.0539
 export const FEDERAL_STD_DEDUCTION = 14600
 export const PAY_PERIODS_PER_YEAR = 52
+export const BIWEEKLY_PAY_PERIODS_PER_YEAR = 26
 
 export function computeHours(
   startTime: string,
@@ -52,13 +53,8 @@ export function estimateTaxes(
   const savingsDeduction = grossPay * savingsRate
   if (isDependent) {
     return {
-      grossPay,
-      otPay: 0,
-      otHours: 0,
-      federalTax: 0,
-      stateTax: 0,
-      ficaTax,
-      savingsDeduction,
+      grossPay, otPay: 0, otHours: 0, federalTax: 0, stateTax: 0,
+      ficaTax, savingsDeduction,
       netPay: Math.max(0, grossPay - ficaTax - savingsDeduction),
     }
   }
@@ -68,18 +64,11 @@ export function estimateTaxes(
   const stateRate = annualGross > 0 ? (stateTaxable / annualGross) * GA_STATE_RATE : 0
   const stateTax = grossPay * stateRate
   return {
-    grossPay,
-    otPay: 0,
-    otHours: 0,
-    federalTax,
-    stateTax,
-    ficaTax,
-    savingsDeduction,
+    grossPay, otPay: 0, otHours: 0, federalTax, stateTax, ficaTax, savingsDeduction,
     netPay: Math.max(0, grossPay - federalTax - stateTax - ficaTax - savingsDeduction),
   }
 }
 
-// Weekly gross accounting for 1.5x overtime on hours above 40.
 export function computeWeeklyBreakdown(
   weekShifts: Shift[],
   hourlyRate: number,
@@ -92,6 +81,72 @@ export function computeWeeklyBreakdown(
   const grossPay = regularHours * hourlyRate + otHours * hourlyRate * 1.5
   const base = estimateTaxes(grossPay, savingsRate, isDependent)
   return { ...base, grossPay, otPay: otHours * hourlyRate * 1.5, otHours }
+}
+
+function localISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export interface PayPeriodBounds {
+  start: string
+  end: string
+  payday: string
+  week1End: string
+}
+
+export function getPayPeriodBounds(nextPayday: string, periodsBack = 0): PayPeriodBounds {
+  const paydayDate = new Date(nextPayday + 'T00:00:00')
+  paydayDate.setDate(paydayDate.getDate() - periodsBack * 14)
+
+  const end = new Date(paydayDate)
+  end.setDate(end.getDate() - 1)
+
+  const start = new Date(end)
+  start.setDate(start.getDate() - 13)
+
+  const week1End = new Date(start)
+  week1End.setDate(week1End.getDate() + 6)
+
+  return {
+    start: localISO(start),
+    end: localISO(end),
+    payday: localISO(paydayDate),
+    week1End: localISO(week1End),
+  }
+}
+
+export function shiftsInRange(shifts: Shift[], start: string, end: string): Shift[] {
+  return shifts.filter((s) => s.date >= start && s.date <= end)
+}
+
+export function computeBiweeklyBreakdown(
+  week1Shifts: Shift[],
+  week2Shifts: Shift[],
+  hourlyRate: number,
+  savingsRate: number,
+  isDependent = false,
+): BiweeklyBreakdown {
+  const week1 = computeWeeklyBreakdown(week1Shifts, hourlyRate, savingsRate, isDependent)
+  const week2 = computeWeeklyBreakdown(week2Shifts, hourlyRate, savingsRate, isDependent)
+  const biweeklyGross = week1.grossPay + week2.grossPay
+  const base = estimateTaxes(
+    biweeklyGross,
+    savingsRate,
+    isDependent,
+    biweeklyGross * BIWEEKLY_PAY_PERIODS_PER_YEAR,
+  )
+  return {
+    grossPay: biweeklyGross,
+    otPay: week1.otPay + week2.otPay,
+    otHours: week1.otHours + week2.otHours,
+    federalTax: base.federalTax,
+    stateTax: base.stateTax,
+    ficaTax: base.ficaTax,
+    savingsDeduction: base.savingsDeduction,
+    netPay: base.netPay,
+    week1,
+    week2,
+  }
 }
 
 export function startOfWeek(d: Date): Date {

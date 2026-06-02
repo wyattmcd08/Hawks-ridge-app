@@ -46,6 +46,7 @@ const DEFAULT_SETTINGS: Settings = {
   defaultStartTime: '05:45',
   name: '',
   isDependent: true,
+  nextPayday: '2026-06-09',
 }
 
 function seedShifts(): Shift[] {
@@ -147,8 +148,7 @@ export const useStore = create<State>()(
     }),
     {
       name: 'hawks-ridge-finance',
-      version: 4,
-      // Preserve user data across future version bumps; only fall back to seed shifts if none exist.
+      version: 5,
       migrate: (persisted, version) => {
         const s = persisted as Partial<State>
         return {

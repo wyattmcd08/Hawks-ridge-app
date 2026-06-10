@@ -46,7 +46,7 @@ const DEFAULT_SETTINGS: Settings = {
   defaultStartTime: '05:45',
   name: '',
   isDependent: true,
-  nextPayday: '2026-06-09',
+  nextPayday: '2026-06-12',
 }
 
 function seedShifts(): Shift[] {
@@ -148,11 +148,16 @@ export const useStore = create<State>()(
     }),
     {
       name: 'hawks-ridge-finance',
-      version: 5,
+      version: 6,
       migrate: (persisted, version) => {
         const s = persisted as Partial<State>
+        const mergedSettings = { ...DEFAULT_SETTINGS, ...(s.settings ?? {}) }
+        // One-time correction: align next payday with the user's actual biweekly schedule (Fri Jun 12, 2026)
+        if (version < 6) {
+          mergedSettings.nextPayday = '2026-06-12'
+        }
         return {
-          settings: { ...DEFAULT_SETTINGS, ...(s.settings ?? {}) },
+          settings: mergedSettings,
           shifts: (version < 4 && (!s.shifts || s.shifts.length === 0))
             ? seedShifts()
             : (s.shifts ?? seedShifts()),

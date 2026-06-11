@@ -1,12 +1,22 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Search, StickyNote, Download, FileSpreadsheet, X } from 'lucide-react'
+import {
+  Plus,
+  Search,
+  StickyNote,
+  Download,
+  FileSpreadsheet,
+  X,
+  List,
+  CalendarDays,
+} from 'lucide-react'
 import { useStore } from '../store/useStore'
 import GlassCard from '../components/GlassCard'
 import ShiftSheet from '../components/ShiftSheet'
+import MonthCalendar from '../components/MonthCalendar'
 import { getCurrentPayPeriod, sumGross, sumHours } from '../utils/calculations'
 import { exportShiftsCSV, exportShiftsExcel } from '../utils/export'
-import { currency, hoursLabel, to12Hour } from '../utils/format'
+import { currency, hoursLabel, prettyDate, to12Hour, todayISO } from '../utils/format'
 import type { Shift } from '../types'
 
 type Filter = 'all' | 'period' | 'month' | 'notes'
@@ -55,6 +65,8 @@ export default function Shifts() {
   const [editing, setEditing] = useState<Shift | null>(null)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
+  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [selectedDay, setSelectedDay] = useState<string>(todayISO())
 
   const filtered = useMemo(() => {
     let list = shifts
@@ -101,8 +113,95 @@ export default function Shifts() {
         </button>
       </div>
 
+      {/* View toggle */}
+      <div className="mt-5 flex gap-1 rounded-2xl glass p-1">
+        {(
+          [
+            { id: 'list', label: 'List', icon: List },
+            { id: 'calendar', label: 'Calendar', icon: CalendarDays },
+          ] as const
+        ).map((v) => (
+          <button
+            key={v.id}
+            onClick={() => setView(v.id)}
+            className="relative flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition"
+          >
+            {view === v.id && (
+              <motion.span
+                layoutId="shift-view-pill"
+                className="absolute inset-0 rounded-xl bg-gradient-to-br from-ember to-blood-deep"
+                transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+              />
+            )}
+            <v.icon size={15} className={view === v.id ? 'relative text-white' : 'relative text-mute'} />
+            <span className={view === v.id ? 'relative text-white' : 'relative text-mute'}>
+              {v.label}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {view === 'calendar' ? (
+        <>
+          <div className="mt-4">
+            <MonthCalendar
+              shifts={shifts}
+              anchorPayday={settings.nextPayday}
+              selected={selectedDay}
+              onSelect={setSelectedDay}
+            />
+          </div>
+
+          {/* Selected day */}
+          <div className="mt-5 mb-3 flex items-center justify-between px-1">
+            <p className="font-semibold">{prettyDate(selectedDay)}</p>
+            <button
+              onClick={() => { setEditing(null); setOpen(true) }}
+              className="flex items-center gap-1 rounded-full glass px-3 py-1.5 text-xs font-medium text-blood-bright transition active:scale-95"
+            >
+              <Plus size={14} /> Add shift
+            </button>
+          </div>
+          <div className="space-y-2.5">
+            {shifts
+              .filter((s) => s.date === selectedDay)
+              .sort((a, b) => a.startTime.localeCompare(b.startTime))
+              .map((s) => (
+                <motion.button
+                  key={s.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  onClick={() => openEdit(s)}
+                  className="flex w-full items-center gap-3 rounded-3xl glass p-4 text-left transition active:scale-[0.98]"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">
+                      {to12Hour(s.startTime)} – {to12Hour(s.endTime)}
+                    </p>
+                    <p className="text-xs text-mute">
+                      {hoursLabel(s.hoursWorked)}
+                      {s.breakMinutes > 0 && ` · ${s.breakMinutes}m break`}
+                    </p>
+                    {s.notes && (
+                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-faint">
+                        <StickyNote size={11} /> {s.notes}
+                      </p>
+                    )}
+                  </div>
+                  <p className="font-bold tabular-nums">{currency(s.grossPay)}</p>
+                </motion.button>
+              ))}
+            {shifts.filter((s) => s.date === selectedDay).length === 0 && (
+              <GlassCard className="p-6 text-center">
+                <p className="text-sm text-mute">No shift this day. Tap “Add shift” to log one.</p>
+              </GlassCard>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
       {/* Search */}
-      <div className="mt-5 flex items-center gap-2 rounded-2xl glass px-4 py-3">
+      <div className="mt-4 flex items-center gap-2 rounded-2xl glass px-4 py-3">
         <Search size={17} className="flex-shrink-0 text-mute" />
         <input
           value={query}
@@ -219,8 +318,15 @@ export default function Shifts() {
           </GlassCard>
         )}
       </div>
+        </>
+      )}
 
-      <ShiftSheet open={open} onClose={() => setOpen(false)} editing={editing} />
+      <ShiftSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        editing={editing}
+        defaultDate={view === 'calendar' ? selectedDay : null}
+      />
     </div>
   )
 }

@@ -11,9 +11,11 @@ interface Props {
   open: boolean
   onClose: () => void
   editing?: Shift | null
+  /** pre-fill the date when adding (e.g. from the calendar) */
+  defaultDate?: string | null
 }
 
-export default function ShiftSheet({ open, onClose, editing }: Props) {
+export default function ShiftSheet({ open, onClose, editing, defaultDate }: Props) {
   const settings = useStore((s) => s.settings)
   const addShift = useStore((s) => s.addShift)
   const updateShift = useStore((s) => s.updateShift)
@@ -28,14 +30,14 @@ export default function ShiftSheet({ open, onClose, editing }: Props) {
 
   useEffect(() => {
     if (open) {
-      setDate(editing?.date ?? todayISO())
+      setDate(editing?.date ?? defaultDate ?? todayISO())
       setStartTime(editing?.startTime ?? settings.defaultStartTime)
       setEndTime(editing?.endTime ?? '13:30')
       setBreakMinutes(editing?.breakMinutes ?? 0)
       setRate(editing?.hourlyRate ?? settings.hourlyRate)
       setNotes(editing?.notes ?? '')
     }
-  }, [open, editing, settings])
+  }, [open, editing, defaultDate, settings])
 
   const hours = computeHours(startTime, endTime, breakMinutes)
   const gross = hours * rate

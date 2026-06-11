@@ -7,6 +7,7 @@ import AnimatedNumber from '../components/AnimatedNumber'
 import PayBreakdown from '../components/PayBreakdown'
 import {
   getPayPeriodBounds,
+  resolveNextPayday,
   shiftsInRange,
   computeBiweeklyBreakdown,
   sumHours,
@@ -62,17 +63,13 @@ export default function PayPeriods() {
   const settings = useStore((s) => s.settings)
   const [selected, setSelected] = useState(0)
 
-  const period = buildPeriod(settings.nextPayday, selected)
+  // Anchor payday rolls forward every 14 days so the schedule never goes stale.
+  const nextPayday = resolveNextPayday(settings.nextPayday)
+  const period = buildPeriod(nextPayday, selected)
 
   const week1Shifts = shiftsInRange(shifts, period.start, period.week1End)
   const week2Shifts = shiftsInRange(shifts, period.week2Start, period.end)
-  const biweekly = computeBiweeklyBreakdown(
-    week1Shifts,
-    week2Shifts,
-    settings.hourlyRate,
-    settings.savingsRate,
-    settings.isDependent,
-  )
+  const biweekly = computeBiweeklyBreakdown(week1Shifts, week2Shifts, settings)
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -88,7 +85,7 @@ export default function PayPeriods() {
   const daysAway = daysUntil(period.payday)
 
   // Compare delta vs current when browsing history
-  const currentPeriod = selected === 0 ? period : buildPeriod(settings.nextPayday, 0)
+  const currentPeriod = selected === 0 ? period : buildPeriod(nextPayday, 0)
   const currentW1 = selected === 0
     ? week1Shifts
     : shiftsInRange(shifts, currentPeriod.start, currentPeriod.week1End)
@@ -97,15 +94,15 @@ export default function PayPeriods() {
     : shiftsInRange(shifts, currentPeriod.week2Start, currentPeriod.end)
   const currentBd = selected === 0
     ? biweekly
-    : computeBiweeklyBreakdown(currentW1, currentW2, settings.hourlyRate, settings.savingsRate, settings.isDependent)
+    : computeBiweeklyBreakdown(currentW1, currentW2, settings)
   const delta = selected > 0 ? currentBd.netPay - biweekly.netPay : 0
 
   // Build history list (past 6 periods)
   const history = Array.from({ length: 6 }, (_, i) => i + 1).map((back) => {
-    const p = buildPeriod(settings.nextPayday, back)
+    const p = buildPeriod(nextPayday, back)
     const w1 = shiftsInRange(shifts, p.start, p.week1End)
     const w2 = shiftsInRange(shifts, p.week2Start, p.end)
-    const bd = computeBiweeklyBreakdown(w1, w2, settings.hourlyRate, settings.savingsRate, settings.isDependent)
+    const bd = computeBiweeklyBreakdown(w1, w2, settings)
     return { ...p, back, netPay: bd.netPay, grossPay: bd.grossPay, otHours: bd.otHours }
   })
 

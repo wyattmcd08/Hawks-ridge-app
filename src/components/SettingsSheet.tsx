@@ -1,15 +1,23 @@
 import { useState, useEffect } from 'react'
+import { Download, FileSpreadsheet } from 'lucide-react'
 import Sheet from './Sheet'
 import { Field, PrimaryButton } from './Field'
 import { useStore } from '../store/useStore'
 import Logo from './Logo'
-import { shiftsInWeek, sumHours } from '../utils/calculations'
-import { currency, hoursLabel } from '../utils/format'
+import { exportShiftsCSV, exportShiftsExcel } from '../utils/export'
+import { currency } from '../utils/format'
+import type { TaxMode } from '../types'
 
 interface Props {
   open: boolean
   onClose: () => void
 }
+
+const TAX_MODES: { id: TaxMode; label: string; hint: string }[] = [
+  { id: 'dependent', label: 'Dependent', hint: 'Only FICA (7.65%) withheld — no income tax' },
+  { id: 'standard', label: 'Standard', hint: 'Estimated federal + Georgia + FICA withholding' },
+  { id: 'custom', label: 'Custom %', hint: 'Flat tax percentage you set yourself' },
+]
 
 export default function SettingsSheet({ open, onClose }: Props) {
   const settings = useStore((s) => s.settings)
@@ -20,8 +28,12 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const [rate, setRate] = useState(settings.hourlyRate)
   const [savings, setSavings] = useState(settings.savingsRate * 100)
   const [start, setStart] = useState(settings.defaultStartTime)
-  const [isDependent, setIsDependent] = useState(settings.isDependent)
   const [nextPayday, setNextPayday] = useState(settings.nextPayday)
+  const [taxMode, setTaxMode] = useState<TaxMode>(settings.taxMode)
+  const [customTax, setCustomTax] = useState(settings.customTaxRate * 100)
+  const [otEnabled, setOtEnabled] = useState(settings.otEnabled)
+  const [otThreshold, setOtThreshold] = useState(settings.otThreshold)
+  const [otMultiplier, setOtMultiplier] = useState(settings.otMultiplier)
 
   useEffect(() => {
     if (open) {
@@ -29,28 +41,28 @@ export default function SettingsSheet({ open, onClose }: Props) {
       setRate(settings.hourlyRate)
       setSavings(settings.savingsRate * 100)
       setStart(settings.defaultStartTime)
-      setIsDependent(settings.isDependent)
       setNextPayday(settings.nextPayday)
+      setTaxMode(settings.taxMode)
+      setCustomTax(settings.customTaxRate * 100)
+      setOtEnabled(settings.otEnabled)
+      setOtThreshold(settings.otThreshold)
+      setOtMultiplier(settings.otMultiplier)
     }
   }, [open, settings])
 
-  // Overtime math — uses local `rate` so it updates live as the user edits
-  const weekShifts = shiftsInWeek(shifts, new Date())
-  const totalHours = sumHours(weekShifts)
-  const regularHours = Math.min(40, totalHours)
-  const otHours = Math.max(0, totalHours - 40)
-  const hoursToOT = Math.max(0, 40 - totalHours)
-  const regularPay = regularHours * rate
-  const otPay = otHours * rate * 1.5
-  const grossWithOT = regularPay + otPay
-  const grossFlat = totalHours * rate
-  const otBonus = grossWithOT - grossFlat
-  const BAR_MAX = Math.max(50, totalHours)
-  const greenPct = (regularHours / BAR_MAX) * 100
-  const goldPct = (otHours / BAR_MAX) * 100
-
   const save = () => {
-    updateSettings({ name, hourlyRate: rate, savingsRate: savings / 100, defaultStartTime: start, isDependent, nextPayday })
+    updateSettings({
+      name,
+      hourlyRate: rate,
+      savingsRate: Math.max(0, savings) / 100,
+      defaultStartTime: start,
+      nextPayday,
+      taxMode,
+      customTaxRate: Math.max(0, customTax) / 100,
+      otEnabled,
+      otThreshold: Math.max(0, otThreshold),
+      otMultiplier: Math.max(1, otMultiplier),
+    })
     onClose()
   }
 
@@ -62,135 +74,104 @@ export default function SettingsSheet({ open, onClose }: Props) {
             <Logo size={28} />
           </div>
           <div>
-            <p className="font-bold">Hawks Ridge Finance</p>
-            <p className="text-xs text-mute">Canton, GA · hourly tracker</p>
+            <p className="font-bold">Hawks Ridge Work Tracker</p>
+            <p className="text-xs text-mute">Canton, GA · paid biweekly</p>
           </div>
         </div>
 
         <Field label="Your name" value={name} placeholder="Optional" onChange={(e) => setName(e.target.value)} />
-        <Field label="Hourly rate" type="number" inputMode="decimal" prefix="$" value={rate}
-          onChange={(e) => setRate(Number(e.target.value) || 0)} />
-        <Field label="Auto-savings rate" type="number" inputMode="decimal" suffix="%" value={savings}
-          onChange={(e) => setSavings(Number(e.target.value) || 0)} />
-        <Field label="Default start time" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
-        <Field label="Next payday" type="date" value={nextPayday} onChange={(e) => setNextPayday(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Hourly wage" type="number" inputMode="decimal" prefix="$" value={rate}
+            onChange={(e) => setRate(Number(e.target.value) || 0)} />
+          <Field label="Savings rate" type="number" inputMode="decimal" suffix="%" value={savings}
+            onChange={(e) => setSavings(Number(e.target.value) || 0)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Default start time" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+          <Field label="Next payday" type="date" value={nextPayday} onChange={(e) => setNextPayday(e.target.value)} />
+        </div>
+        <p className="px-2 text-xs text-faint">
+          Paydays repeat every 14 days after this date — the app rolls forward automatically.
+        </p>
 
-        {/* Dependent toggle */}
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5">
-          <div>
-            <p className="text-sm font-medium text-ink">Filed as dependent</p>
-            <p className="mt-0.5 text-xs text-mute">Only FICA withheld — no income tax</p>
+        {/* Tax mode */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+          <p className="text-sm font-semibold">Tax withholding</p>
+          <div className="mt-3 flex gap-1 rounded-xl bg-black/25 p-1">
+            {TAX_MODES.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setTaxMode(m.id)}
+                className={`flex-1 rounded-lg py-2 text-xs font-medium transition ${
+                  taxMode === m.id ? 'bg-blood text-white' : 'text-mute'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
-          <button
-            onClick={() => setIsDependent(!isDependent)}
-            className={`relative ml-4 h-7 w-12 flex-shrink-0 rounded-full transition-colors ${
-              isDependent ? 'bg-blood' : 'bg-white/20'
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
-                isDependent ? 'translate-x-5' : 'translate-x-0.5'
-              }`}
-            />
-          </button>
+          <p className="mt-2 text-xs text-mute">
+            {TAX_MODES.find((m) => m.id === taxMode)?.hint}
+          </p>
+          {taxMode === 'custom' && (
+            <div className="mt-3">
+              <Field label="Tax percentage" type="number" inputMode="decimal" suffix="%" value={customTax}
+                onChange={(e) => setCustomTax(Number(e.target.value) || 0)} />
+            </div>
+          )}
         </div>
 
-        {/* Overtime explainer */}
+        {/* Overtime rules */}
         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-base" style={{ color: '#f0c040' }}>⚡</span>
-            <p className="text-sm font-semibold">Overtime — How It Works</p>
-          </div>
-
-          <p className="text-xs leading-relaxed text-mute">
-            Hours past{' '}
-            <span className="font-semibold text-ink">40/week</span> are paid at{' '}
-            <span className="font-semibold" style={{ color: '#f0c040' }}>1.5× your hourly rate</span>
-            {rate > 0 && (
-              <span className="text-faint"> — that's {currency(rate * 1.5)}/hr at your current rate</span>
-            )}
-            .
-          </p>
-
-          <div className="rounded-xl bg-black/25 px-3 py-3 space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-mute">This week</p>
-
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs">
-                <span className="text-mute">{hoursLabel(totalHours)} worked</span>
-                {otHours > 0 ? (
-                  <span style={{ color: '#f0c040' }} className="font-semibold">
-                    ⚡ {hoursLabel(otHours)} overtime
-                  </span>
-                ) : (
-                  <span className="text-faint">{hoursLabel(hoursToOT)} until OT</span>
-                )}
-              </div>
-              <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/10">
-                <div className="flex h-full">
-                  <div className="h-full transition-all duration-500"
-                    style={{ width: `${greenPct}%`, background: '#006747' }} />
-                  {otHours > 0 && (
-                    <div className="h-full transition-all duration-500"
-                      style={{ width: `${goldPct}%`, background: '#f0c040' }} />
-                  )}
-                </div>
-              </div>
-              <div className="flex justify-between text-[10px] text-faint">
-                <span>0h</span>
-                <span className="text-mute">40h threshold</span>
-                <span>{hoursLabel(BAR_MAX)}</span>
-              </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold">Overtime</p>
+              <p className="mt-0.5 text-xs text-mute">
+                {otEnabled
+                  ? `Past ${otThreshold}h/week pays ${otMultiplier}× — ${currency(rate * otMultiplier)}/hr`
+                  : 'All hours paid at your flat rate'}
+              </p>
             </div>
+            <button
+              onClick={() => setOtEnabled(!otEnabled)}
+              className={`relative ml-4 h-7 w-12 flex-shrink-0 rounded-full transition-colors ${
+                otEnabled ? 'bg-blood' : 'bg-white/20'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                  otEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+          {otEnabled && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Weekly threshold" type="number" inputMode="numeric" suffix="h" value={otThreshold}
+                onChange={(e) => setOtThreshold(Number(e.target.value) || 0)} />
+              <Field label="Multiplier" type="number" inputMode="decimal" suffix="×" value={otMultiplier}
+                onChange={(e) => setOtMultiplier(Number(e.target.value) || 0)} />
+            </div>
+          )}
+        </div>
 
-            {totalHours > 0 ? (
-              <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: '#006747' }} />
-                    <span className="text-xs text-mute">
-                      Regular — {hoursLabel(regularHours)} × {currency(rate)}/hr
-                    </span>
-                  </div>
-                  <span className="text-xs font-semibold tabular-nums">{currency(regularPay)}</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full"
-                      style={{ background: otHours > 0 ? '#f0c040' : 'rgba(255,255,255,0.15)' }} />
-                    <span className="text-xs"
-                      style={{ color: otHours > 0 ? '#f0c040' : '#565e59' }}>
-                      Overtime — {hoursLabel(otHours)} × {currency(rate * 1.5)}/hr
-                    </span>
-                  </div>
-                  <span className="text-xs font-bold tabular-nums"
-                    style={{ color: otHours > 0 ? '#f0c040' : '#565e59' }}>
-                    {otHours > 0 ? `+${currency(otPay)}` : '$0.00'}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-white/10 pt-2">
-                  <span className="text-xs font-semibold text-ink">Gross this week</span>
-                  <span className="text-xs font-bold tabular-nums">{currency(grossWithOT)}</span>
-                </div>
-
-                {otBonus > 0 && (
-                  <div className="flex items-center justify-between rounded-lg px-3 py-2"
-                    style={{ background: 'rgba(240,192,64,0.1)', border: '1px solid rgba(240,192,64,0.25)' }}>
-                    <div>
-                      <p className="text-xs font-semibold" style={{ color: '#f0c040' }}>OT bonus earned</p>
-                      <p className="text-[10px] text-faint">vs. {currency(grossFlat)} at flat rate</p>
-                    </div>
-                    <span className="text-sm font-extrabold tabular-nums" style={{ color: '#f0c040' }}>
-                      +{currency(otBonus)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-faint text-center py-0.5">No shifts logged this week yet</p>
-            )}
+        {/* Export */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+          <p className="text-sm font-semibold">Export your data</p>
+          <p className="mt-0.5 text-xs text-mute">{shifts.length} shifts stored on this device</p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <button
+              onClick={() => exportShiftsCSV(shifts)}
+              className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-black/25 py-3 text-sm font-medium transition active:scale-[0.98]"
+            >
+              <Download size={16} className="text-blood-bright" /> CSV
+            </button>
+            <button
+              onClick={() => exportShiftsExcel(shifts)}
+              className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-black/25 py-3 text-sm font-medium transition active:scale-[0.98]"
+            >
+              <FileSpreadsheet size={16} className="text-mint" /> Excel
+            </button>
           </div>
         </div>
 

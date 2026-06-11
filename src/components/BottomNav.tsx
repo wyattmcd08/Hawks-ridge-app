@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Home, CalendarClock, Banknote, Target, Play } from 'lucide-react'
+import { Home, CalendarClock, Banknote, BarChart3, Play } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import type { Page } from '../types'
 
@@ -7,7 +7,7 @@ const items: { page: Page; icon: typeof Home; label: string }[] = [
   { page: 'dashboard', icon: Home, label: 'Home' },
   { page: 'shifts', icon: CalendarClock, label: 'Shifts' },
   { page: 'pay', icon: Banknote, label: 'Pay' },
-  { page: 'goals', icon: Target, label: 'Goals' },
+  { page: 'analytics', icon: BarChart3, label: 'Stats' },
 ]
 
 export default function BottomNav() {

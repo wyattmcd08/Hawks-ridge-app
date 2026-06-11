@@ -45,7 +45,11 @@ const DEFAULT_SETTINGS: Settings = {
   savingsRate: 0.05,
   defaultStartTime: '05:45',
   name: '',
-  isDependent: true,
+  taxMode: 'dependent',
+  customTaxRate: 0.1,
+  otEnabled: true,
+  otThreshold: 40,
+  otMultiplier: 1.5,
   nextPayday: '2026-06-12',
 }
 
@@ -61,6 +65,37 @@ function seedShifts(): Shift[] {
     { date: '2026-05-29', startTime: '05:59', endTime: '14:03', breakMinutes: 30, notes: 'Logged from live session' },
     { date: '2026-05-30', startTime: '05:50', endTime: '09:55', breakMinutes: 0, notes: 'Logged from live session' },
   ].map((e) => buildShift({ ...e, hourlyRate: r }))
+}
+
+/**
+ * Defensive shift normalizer used during migration: keeps every stored shift
+ * intact while back-filling any missing/invalid derived fields so old records
+ * render correctly in the redesigned UI.
+ */
+function normalizeShift(raw: Partial<Shift>): Shift {
+  const startTime = raw.startTime ?? ''
+  const endTime = raw.endTime ?? ''
+  const breakMinutes = Number(raw.breakMinutes) || 0
+  const hourlyRate = Number(raw.hourlyRate) || DEFAULT_SETTINGS.hourlyRate
+  const storedHours = Number(raw.hoursWorked)
+  const hoursWorked =
+    Number.isFinite(storedHours) && storedHours > 0
+      ? storedHours
+      : computeHours(startTime, endTime, breakMinutes)
+  const storedGross = Number(raw.grossPay)
+  const grossPay =
+    Number.isFinite(storedGross) && storedGross > 0 ? storedGross : hoursWorked * hourlyRate
+  return {
+    id: raw.id ?? uid(),
+    date: raw.date ?? '',
+    startTime,
+    endTime,
+    breakMinutes,
+    hourlyRate,
+    notes: raw.notes ?? '',
+    hoursWorked,
+    grossPay,
+  }
 }
 
 export const useStore = create<State>()(
@@ -138,7 +173,7 @@ export const useStore = create<State>()(
       totalSaved: () => {
         const { shifts, settings, goals } = get()
         const fromShifts = shifts.reduce(
-          (acc, s) => acc + estimateTaxes(s.grossPay, settings.savingsRate).savingsDeduction,
+          (acc, s) => acc + estimateTaxes(s.grossPay, settings).savingsDeduction,
           0,
         )
         const inGoals = goals.reduce((acc, g) => acc + g.currentAmount, 0)
@@ -148,19 +183,35 @@ export const useStore = create<State>()(
     }),
     {
       name: 'hawks-ridge-finance',
-      version: 6,
+      version: 7,
       migrate: (persisted, version) => {
         const s = persisted as Partial<State>
-        const mergedSettings = { ...DEFAULT_SETTINGS, ...(s.settings ?? {}) }
-        // One-time correction: align next payday with the user's actual biweekly schedule (Fri Jun 12, 2026)
+        // Settings carried forward from any prior version; older stores used a
+        // boolean `isDependent` flag which maps onto the new taxMode field.
+        const old = (s.settings ?? {}) as Partial<Settings> & { isDependent?: boolean }
+        const mergedSettings: Settings = {
+          ...DEFAULT_SETTINGS,
+          ...old,
+          taxMode: old.taxMode ?? (old.isDependent === false ? 'standard' : 'dependent'),
+          customTaxRate: old.customTaxRate ?? DEFAULT_SETTINGS.customTaxRate,
+          otEnabled: old.otEnabled ?? true,
+          otThreshold: old.otThreshold ?? 40,
+          otMultiplier: old.otMultiplier ?? 1.5,
+        }
+        // One-time correction kept from v6: align anchor payday with the real
+        // biweekly schedule (Fri Jun 12, 2026; repeats every 14 days).
         if (version < 6) {
           mergedSettings.nextPayday = '2026-06-12'
         }
+        // Never drop stored shifts — normalize in place so historical records
+        // appear unchanged in the redesigned UI.
+        const storedShifts =
+          version < 4 && (!s.shifts || s.shifts.length === 0)
+            ? seedShifts()
+            : (s.shifts ?? seedShifts())
         return {
           settings: mergedSettings,
-          shifts: (version < 4 && (!s.shifts || s.shifts.length === 0))
-            ? seedShifts()
-            : (s.shifts ?? seedShifts()),
+          shifts: storedShifts.map(normalizeShift),
           goals: s.goals ?? [],
           session: s.session ?? { isActive: false, startTime: null, breakMinutes: 0 },
           page: (s.page ?? 'dashboard') as Page,

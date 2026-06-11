@@ -1,10 +1,16 @@
-import type { Shift, TaxBreakdown, BiweeklyBreakdown } from '../types'
+import type { Shift, TaxBreakdown, BiweeklyBreakdown, Settings } from '../types'
 
 export const FICA_RATE = 0.0765
 export const GA_STATE_RATE = 0.0539
 export const FEDERAL_STD_DEDUCTION = 14600
 export const PAY_PERIODS_PER_YEAR = 52
 export const BIWEEKLY_PAY_PERIODS_PER_YEAR = 26
+
+/** Settings fields needed for pay math — the full Settings object always satisfies this. */
+export type PaySettings = Pick<
+  Settings,
+  'hourlyRate' | 'savingsRate' | 'taxMode' | 'customTaxRate' | 'otEnabled' | 'otThreshold' | 'otMultiplier'
+>
 
 export function computeHours(
   startTime: string,
@@ -40,18 +46,26 @@ function federalEffectiveRate(annualGross: number): number {
   return tax / annualGross
 }
 
+const EMPTY_BREAKDOWN: TaxBreakdown = {
+  grossPay: 0, otPay: 0, otHours: 0, federalTax: 0, stateTax: 0, ficaTax: 0, savingsDeduction: 0, netPay: 0,
+}
+
 export function estimateTaxes(
   grossPay: number,
-  savingsRate: number,
-  isDependent = false,
+  settings: PaySettings,
   annualGross = grossPay * PAY_PERIODS_PER_YEAR,
 ): TaxBreakdown {
-  if (grossPay <= 0) {
-    return { grossPay: 0, otPay: 0, otHours: 0, federalTax: 0, stateTax: 0, ficaTax: 0, savingsDeduction: 0, netPay: 0 }
+  if (grossPay <= 0) return { ...EMPTY_BREAKDOWN }
+  const savingsDeduction = grossPay * settings.savingsRate
+  if (settings.taxMode === 'custom') {
+    const federalTax = grossPay * Math.max(0, settings.customTaxRate)
+    return {
+      grossPay, otPay: 0, otHours: 0, federalTax, stateTax: 0, ficaTax: 0, savingsDeduction,
+      netPay: Math.max(0, grossPay - federalTax - savingsDeduction),
+    }
   }
   const ficaTax = grossPay * FICA_RATE
-  const savingsDeduction = grossPay * savingsRate
-  if (isDependent) {
+  if (settings.taxMode === 'dependent') {
     return {
       grossPay, otPay: 0, otHours: 0, federalTax: 0, stateTax: 0,
       ficaTax, savingsDeduction,
@@ -71,20 +85,36 @@ export function estimateTaxes(
 
 export function computeWeeklyBreakdown(
   weekShifts: Shift[],
-  hourlyRate: number,
-  savingsRate: number,
-  isDependent = false,
+  settings: PaySettings,
 ): TaxBreakdown {
   const totalHours = sumHours(weekShifts)
-  const regularHours = Math.min(40, totalHours)
-  const otHours = Math.max(0, totalHours - 40)
-  const grossPay = regularHours * hourlyRate + otHours * hourlyRate * 1.5
-  const base = estimateTaxes(grossPay, savingsRate, isDependent)
-  return { ...base, grossPay, otPay: otHours * hourlyRate * 1.5, otHours }
+  const threshold = settings.otEnabled ? settings.otThreshold : Infinity
+  const regularHours = Math.min(threshold, totalHours)
+  const otHours = Math.max(0, totalHours - regularHours)
+  const otPay = otHours * settings.hourlyRate * settings.otMultiplier
+  const grossPay = regularHours * settings.hourlyRate + otPay
+  const base = estimateTaxes(grossPay, settings)
+  return { ...base, grossPay, otPay, otHours }
 }
 
 function localISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function todayLocalISO(): string {
+  return localISO(new Date())
+}
+
+/**
+ * Rolls the anchor payday forward in 14-day steps so the "next payday"
+ * is always today or in the future — future pay periods continue
+ * automatically every 2 weeks after the configured anchor.
+ */
+export function resolveNextPayday(anchorPayday: string, todayStr = todayLocalISO()): string {
+  const d = new Date(anchorPayday + 'T00:00:00')
+  const today = new Date(todayStr + 'T00:00:00')
+  while (d < today) d.setDate(d.getDate() + 14)
+  return localISO(d)
 }
 
 export interface PayPeriodBounds {
@@ -115,6 +145,29 @@ export function getPayPeriodBounds(nextPayday: string, periodsBack = 0): PayPeri
   }
 }
 
+export interface CurrentPayPeriod extends PayPeriodBounds {
+  /** 1-based day index within the 14-day period, clamped to [0, 14] */
+  dayInPeriod: number
+  /** 0..1 completion of the period */
+  progress: number
+  daysUntilPayday: number
+}
+
+/** The pay period containing today, with countdown + progress, rolling forward automatically. */
+export function getCurrentPayPeriod(anchorPayday: string): CurrentPayPeriod {
+  const payday = resolveNextPayday(anchorPayday)
+  const bounds = getPayPeriodBounds(payday)
+  const today = new Date(todayLocalISO() + 'T00:00:00')
+  const start = new Date(bounds.start + 'T00:00:00')
+  const paydayDate = new Date(payday + 'T00:00:00')
+  const dayInPeriod = Math.min(
+    14,
+    Math.max(0, Math.round((today.getTime() - start.getTime()) / 86400000) + 1),
+  )
+  const daysUntilPayday = Math.max(0, Math.round((paydayDate.getTime() - today.getTime()) / 86400000))
+  return { ...bounds, dayInPeriod, progress: dayInPeriod / 14, daysUntilPayday }
+}
+
 export function shiftsInRange(shifts: Shift[], start: string, end: string): Shift[] {
   return shifts.filter((s) => s.date >= start && s.date <= end)
 }
@@ -122,17 +175,14 @@ export function shiftsInRange(shifts: Shift[], start: string, end: string): Shif
 export function computeBiweeklyBreakdown(
   week1Shifts: Shift[],
   week2Shifts: Shift[],
-  hourlyRate: number,
-  savingsRate: number,
-  isDependent = false,
+  settings: PaySettings,
 ): BiweeklyBreakdown {
-  const week1 = computeWeeklyBreakdown(week1Shifts, hourlyRate, savingsRate, isDependent)
-  const week2 = computeWeeklyBreakdown(week2Shifts, hourlyRate, savingsRate, isDependent)
+  const week1 = computeWeeklyBreakdown(week1Shifts, settings)
+  const week2 = computeWeeklyBreakdown(week2Shifts, settings)
   const biweeklyGross = week1.grossPay + week2.grossPay
   const base = estimateTaxes(
     biweeklyGross,
-    savingsRate,
-    isDependent,
+    settings,
     biweeklyGross * BIWEEKLY_PAY_PERIODS_PER_YEAR,
   )
   return {
@@ -147,6 +197,28 @@ export function computeBiweeklyBreakdown(
     week1,
     week2,
   }
+}
+
+/** Full breakdown for the pay period containing today. */
+export function computeCurrentPeriodBreakdown(
+  shifts: Shift[],
+  settings: PaySettings & { nextPayday: string },
+): { period: CurrentPayPeriod; breakdown: BiweeklyBreakdown; periodShifts: Shift[] } {
+  const period = getCurrentPayPeriod(settings.nextPayday)
+  const week2Start = addDays(period.week1End, 1)
+  const week1 = shiftsInRange(shifts, period.start, period.week1End)
+  const week2 = shiftsInRange(shifts, week2Start, period.end)
+  return {
+    period,
+    breakdown: computeBiweeklyBreakdown(week1, week2, settings),
+    periodShifts: [...week1, ...week2],
+  }
+}
+
+export function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return localISO(d)
 }
 
 export function startOfWeek(d: Date): Date {

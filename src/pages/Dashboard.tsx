@@ -1,20 +1,13 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
-  AreaChart,
-  Area,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-} from 'recharts'
-import {
   Settings as SettingsIcon,
   TrendingUp,
   Clock,
   PiggyBank,
-  Wallet,
   Plus,
   ChevronRight,
+  CalendarDays,
 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import Logo from '../components/Logo'
@@ -27,16 +20,15 @@ import {
   shiftsInWeek,
   sumGross,
   sumHours,
-  computeWeeklyBreakdown,
+  computeCurrentPeriodBreakdown,
 } from '../utils/calculations'
-import { dailySeries } from '../utils/series'
+import { weeklySeries } from '../utils/series'
 import { currency, hoursLabel, relativeDay, to12Hour } from '../utils/format'
 import { useLiveSession } from '../utils/useLiveSession'
 
 export default function Dashboard() {
   const shifts = useStore((s) => s.shifts)
   const settings = useStore((s) => s.settings)
-  const goals = useStore((s) => s.goals)
   const totalSaved = useStore((s) => s.totalSaved())
   const setPage = useStore((s) => s.setPage)
   const [addOpen, setAddOpen] = useState(false)
@@ -44,38 +36,56 @@ export default function Dashboard() {
   const live = useLiveSession()
 
   const now = new Date()
-  const weekShifts = shiftsInWeek(shifts, now)
-  const weekHours = sumHours(weekShifts)
-  const paycheck = computeWeeklyBreakdown(
-    weekShifts,
-    settings.hourlyRate,
-    settings.savingsRate,
-    settings.isDependent,
-  )
-  const avgRate = weekHours > 0 ? paycheck.grossPay / weekHours : settings.hourlyRate
 
+  // Lifetime
+  const lifetimeGross = sumGross(shifts)
+
+  // Current biweekly pay period (rolls forward automatically every 14 days)
+  const { period, breakdown, periodShifts } = computeCurrentPeriodBreakdown(shifts, settings)
+  const periodHours = sumHours(periodShifts)
+
+  // Hours
+  const weekHours = sumHours(shiftsInWeek(shifts, now))
+  const activeWeeks = weeklySeries(shifts, 8).filter((w) => (w.hours ?? 0) > 0)
+  const avgWeekHours =
+    activeWeeks.length > 0
+      ? activeWeeks.reduce((a, w) => a + (w.hours ?? 0), 0) / activeWeeks.length
+      : 0
+
+  // Live earnings today
   const todayKey = now.toISOString().slice(0, 10)
   const todayGross = sumGross(shifts.filter((s) => s.date === todayKey))
   const earnedToday = live.active ? todayGross + live.earnings : todayGross
 
-  const trend = dailySeries(shifts, 7)
   const recent = [...shifts].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4)
 
   const hour = now.getHours()
-  const greeting =
-    hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const dateLabel = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  })
+  const paydayLabel = new Date(period.payday + 'T00:00:00').toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
 
   return (
     <div className="min-h-screen px-5 pb-32 safe-top">
-      {/* Header */}
+      {/* Header — greeting + current date */}
       <div className="flex items-center justify-between pt-4">
         <div className="flex items-center gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-2xl glass">
             <Logo size={28} />
           </div>
           <div>
-            <p className="text-sm text-mute">{greeting}</p>
-            <p className="text-lg font-bold leading-tight">Hawks Ridge</p>
+            <p className="text-sm text-mute">
+              {greeting}
+              {settings.name ? `, ${settings.name}` : ''}
+            </p>
+            <p className="text-lg font-bold leading-tight">{dateLabel}</p>
           </div>
         </div>
         <button
@@ -86,19 +96,18 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Hero — estimated paycheck */}
+      {/* Earnings card — lifetime + current period + take-home */}
       <GlassCard variant="red" className="mt-6 overflow-hidden p-6" delay={0.05}>
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
-              Estimated Paycheck
+              Total Earned · All Time
             </p>
             <p className="mt-2 text-5xl font-extrabold tracking-tight">
-              <AnimatedNumber value={paycheck.netPay} prefix="$" />
+              <AnimatedNumber value={lifetimeGross} prefix="$" />
             </p>
             <p className="mt-1.5 text-sm text-white/60">
-              {currency(paycheck.grossPay)} gross
-              {paycheck.otHours > 0 && ` · ${paycheck.otHours.toFixed(1)}h OT`}
+              {hoursLabel(sumHours(shifts))} worked at Hawks Ridge
             </p>
           </div>
           <div className="rounded-full bg-white/10 p-2.5">
@@ -106,12 +115,25 @@ export default function Dashboard() {
           </div>
         </div>
 
+        <div className="mt-5 grid grid-cols-2 gap-2.5">
+          <div className="rounded-2xl bg-black/25 px-4 py-3">
+            <p className="text-[11px] font-medium text-white/55">This pay period</p>
+            <p className="mt-0.5 text-xl font-bold tabular-nums">
+              <AnimatedNumber value={breakdown.grossPay} prefix="$" />
+            </p>
+          </div>
+          <div className="rounded-2xl bg-black/25 px-4 py-3">
+            <p className="text-[11px] font-medium text-white/55">Est. take-home</p>
+            <p className="mt-0.5 text-xl font-bold tabular-nums text-mint">
+              <AnimatedNumber value={breakdown.netPay} prefix="$" />
+            </p>
+          </div>
+        </div>
+
         {/* Live earned today */}
-        <div className="mt-5 flex items-center gap-2 rounded-2xl bg-black/25 px-4 py-3">
+        <div className="mt-2.5 flex items-center gap-2 rounded-2xl bg-black/25 px-4 py-3">
           <span
-            className={`h-2 w-2 rounded-full ${
-              live.active ? 'animate-pulse bg-mint' : 'bg-white/30'
-            }`}
+            className={`h-2 w-2 rounded-full ${live.active ? 'animate-pulse bg-mint' : 'bg-white/30'}`}
           />
           <span className="text-sm text-white/70">
             {live.active ? 'Earning now · today' : 'Earned today'}
@@ -122,73 +144,97 @@ export default function Dashboard() {
         </div>
       </GlassCard>
 
-      {/* Stat grid */}
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <StatTile icon={Clock} label="Hours this week" value={hoursLabel(weekHours)} tint="text-sky" delay={0.1} />
-        <StatTile icon={Wallet} label="Earned this week" value={currency(paycheck.grossPay, 0)} tint="text-gold" delay={0.15} />
-        <StatTile icon={PiggyBank} label="Total saved" value={currency(totalSaved, 0)} tint="text-mint" delay={0.2} />
-        <StatTile icon={TrendingUp} label="Avg / hour" value={currency(avgRate, 2)} tint="text-violet" delay={0.25} />
-      </div>
-
-      {/* Earnings trend */}
-      <GlassCard className="mt-4 p-5" delay={0.3}>
-        <div className="mb-1 flex items-center justify-between">
-          <p className="font-semibold">Earnings trend</p>
-          <button onClick={() => setPage('analytics')} className="flex items-center text-xs text-mute">
-            Last 7 days <ChevronRight size={14} />
-          </button>
-        </div>
-        <div className="h-32">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={trend} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
-              <defs>
-                <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#006747" stopOpacity={0.5} />
-                  <stop offset="100%" stopColor="#006747" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#565e59', fontSize: 11 }} />
-              <Tooltip
-                cursor={{ stroke: '#006747', strokeWidth: 1, strokeDasharray: '4 4' }}
-                contentStyle={{ background: 'rgba(20,24,22,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, color: '#fff' }}
-                formatter={(v) => [currency(Number(v)), 'Earned']}
-                labelStyle={{ color: '#8b9490' }}
+      {/* Payday card — countdown + progress ring */}
+      <GlassCard className="mt-4 p-5" delay={0.12} onClick={() => setPage('pay')}>
+        <div className="flex items-center gap-5">
+          <CircularProgress progress={period.progress} size={104} stroke={10} color="#1a8a60" delay={0.25}>
+            <p className="text-2xl font-extrabold leading-none">
+              {period.daysUntilPayday}
+            </p>
+            <p className="text-[10px] font-medium text-mute">
+              {period.daysUntilPayday === 1 ? 'day left' : 'days left'}
+            </p>
+          </CircularProgress>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <CalendarDays size={14} className="text-blood-bright" />
+              <p className="text-xs font-semibold uppercase tracking-wider text-mute">
+                Next Payday
+              </p>
+            </div>
+            <p className="mt-1 text-xl font-extrabold tracking-tight">
+              {period.daysUntilPayday === 0 ? '🎉 Today!' : paydayLabel}
+            </p>
+            <p className="mt-0.5 text-xs text-mute">
+              Day {period.dayInPeriod} of 14 · {hoursLabel(periodHours)} logged
+            </p>
+            <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${period.progress * 100}%` }}
+                transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.3 }}
+                className="h-full rounded-full bg-blood-bright"
               />
-              <Area type="monotone" dataKey="value" stroke="#1a8a60" strokeWidth={2.5} fill="url(#trendFill)" />
-            </AreaChart>
-          </ResponsiveContainer>
+            </div>
+          </div>
+          <ChevronRight size={18} className="flex-shrink-0 text-faint" />
         </div>
       </GlassCard>
 
-      {/* Savings goal rings */}
-      {goals.length > 0 && (
-        <GlassCard className="mt-4 p-5" delay={0.35}>
-          <div className="mb-4 flex items-center justify-between">
-            <p className="font-semibold">Savings goals</p>
-            <button onClick={() => setPage('goals')} className="flex items-center text-xs text-mute">
-              View all <ChevronRight size={14} />
-            </button>
+      {/* Hours card */}
+      <GlassCard className="mt-4 p-5" delay={0.18}>
+        <div className="mb-3 flex items-center gap-1.5">
+          <Clock size={14} className="text-sky" />
+          <p className="text-xs font-semibold uppercase tracking-wider text-mute">Hours</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <p className="text-xl font-extrabold tracking-tight">{hoursLabel(weekHours)}</p>
+            <p className="mt-0.5 text-[11px] text-mute">this week</p>
           </div>
-          <div className="flex justify-around">
-            {goals.slice(0, 3).map((g, i) => {
-              const pct = g.targetAmount > 0 ? g.currentAmount / g.targetAmount : 0
-              return (
-                <div key={g.id} className="flex flex-col items-center gap-2">
-                  <CircularProgress progress={pct} size={88} stroke={9} color={g.color} delay={0.4 + i * 0.1}>
-                    <span className="text-xl">{g.emoji}</span>
-                  </CircularProgress>
-                  <div className="text-center">
-                    <p className="text-xs font-medium">{g.name}</p>
-                    <p className="text-[11px] text-mute">{Math.round(pct * 100)}%</p>
-                  </div>
-                </div>
-              )
-            })}
+          <div className="border-x border-white/8">
+            <p className="text-xl font-extrabold tracking-tight">{hoursLabel(periodHours)}</p>
+            <p className="mt-0.5 text-[11px] text-mute">pay period</p>
           </div>
-        </GlassCard>
-      )}
+          <div>
+            <p className="text-xl font-extrabold tracking-tight">{hoursLabel(avgWeekHours)}</p>
+            <p className="mt-0.5 text-[11px] text-mute">avg / week</p>
+          </div>
+        </div>
+      </GlassCard>
 
-      {/* Recent shifts */}
+      {/* Savings card */}
+      <GlassCard className="mt-4 p-5" delay={0.24} onClick={() => setPage('goals')}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <PiggyBank size={14} className="text-mint" />
+            <p className="text-xs font-semibold uppercase tracking-wider text-mute">Savings</p>
+          </div>
+          <ChevronRight size={16} className="text-faint" />
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div>
+            <p className="text-xl font-extrabold tracking-tight text-mint">
+              {currency(totalSaved, 0)}
+            </p>
+            <p className="mt-0.5 text-[11px] text-mute">total saved</p>
+          </div>
+          <div className="border-x border-white/8">
+            <p className="text-xl font-extrabold tracking-tight">
+              {currency(breakdown.savingsDeduction, 0)}
+            </p>
+            <p className="mt-0.5 text-[11px] text-mute">this paycheck</p>
+          </div>
+          <div>
+            <p className="text-xl font-extrabold tracking-tight">
+              {Math.round(settings.savingsRate * 100)}%
+            </p>
+            <p className="mt-0.5 text-[11px] text-mute">savings rate</p>
+          </div>
+        </div>
+      </GlassCard>
+
+      {/* Recent shifts + quick add */}
       <div className="mt-6 mb-3 flex items-center justify-between">
         <p className="font-semibold">Recent shifts</p>
         <button
@@ -204,7 +250,7 @@ export default function Dashboard() {
             key={s.id}
             initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.4 + i * 0.05 }}
+            transition={{ delay: 0.35 + i * 0.05 }}
             onClick={() => setPage('shifts')}
             className="flex w-full items-center gap-3 rounded-3xl glass p-4 text-left transition active:scale-[0.98]"
           >
@@ -230,27 +276,5 @@ export default function Dashboard() {
       <ShiftSheet open={addOpen} onClose={() => setAddOpen(false)} />
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
-  )
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  tint,
-  delay,
-}: {
-  icon: typeof Clock
-  label: string
-  value: string
-  tint: string
-  delay: number
-}) {
-  return (
-    <GlassCard className="p-4" delay={delay}>
-      <Icon size={20} className={tint} />
-      <p className="mt-3 text-2xl font-bold tracking-tight">{value}</p>
-      <p className="text-xs text-mute">{label}</p>
-    </GlassCard>
   )
 }

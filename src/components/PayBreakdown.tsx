@@ -8,7 +8,7 @@ const ROWS: { key: keyof TaxBreakdown; label: string; color: string }[] = [
   { key: 'netPay', label: 'Take-home pay', color: '#34d399' },
   { key: 'savingsDeduction', label: 'Auto savings', color: '#4c9af5' },
   { key: 'ficaTax', label: 'FICA (Social Security + Medicare)', color: '#f0c040' },
-  { key: 'federalTax', label: 'Federal income tax', color: '#a78bfa' },
+  { key: 'federalTax', label: 'Income tax', color: '#a78bfa' },
   { key: 'stateTax', label: 'Georgia income tax', color: '#ff8a5e' },
 ]
 
